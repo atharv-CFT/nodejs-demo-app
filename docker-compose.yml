@@ -1,0 +1,56 @@
+services:
+  app:
+    build: .
+    image: ${IMAGE_NAME:-nodejs-demo-app}:${IMAGE_TAG:-latest}
+    container_name: nodejs-demo-app
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT:-5000}
+      MONGO_URL: ${MONGO_URL}
+      DB_NAME: ${MONGO_DB_NAME:-mydatabase}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - app-network
+    # No host port published on purpose — Nginx is the only public entry point.
+
+  mongo:
+    image: mongo:7
+    container_name: nodejs-demo-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-change_me_strong_password}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-mydatabase}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-network
+    # No host port published — only the app container talks to Mongo.
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nodejs-demo-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
