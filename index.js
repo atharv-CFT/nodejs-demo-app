@@ -22,22 +22,35 @@ import { publicIp, publicIpv4, publicIpv6 } from 'public-ip';
 
 
 // For mongodb
-const  mongoUrl= 'mongodb://3.81.12.106:27017/'// Replace with mongodb server IP
-const client = new MongoClient(mongoUrl); 
+// Connection details are read from environment variables so the same image
+// can run locally, in Docker Compose, or in production without code changes.
+const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017/';
+const dbName = process.env.DB_NAME || 'mydatabase';
+const client = new MongoClient(mongoUrl);
 
-const db = client.db('mydatabase'); // Name of your database
+const db = client.db(dbName); // Name of your database
 const collection = db.collection('mycollection'); // Name of your collection
 
 // Database connection function
-async function connectToMongoDB() {
-    try {
-      await client.connect();
-      console.log('Connected to MongoDB server');
-    } catch (error) {
-      console.error('Error connecting to MongoDB Server:', error);
+// Retries a few times because in Docker Compose the app container can start
+// before the MongoDB container has finished initializing.
+async function connectToMongoDB(retries = 10, delayMs = 3000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            await client.connect();
+            console.log('Connected to MongoDB server');
+            return;
+        } catch (error) {
+            console.error(`Mongo connection attempt ${attempt}/${retries} failed:`, error.message);
+            if (attempt === retries) {
+                console.error('Could not connect to MongoDB, continuing without DB (endpoints using it will fail)');
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
     }
-  }
-  
+}
+
 connectToMongoDB();
 
 // await client.close(); // Close the connection
@@ -48,6 +61,11 @@ const PORT = process.env.PORT || 5000;
 // Home page
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
+});
+
+// Health check endpoint (used by Docker healthcheck / load balancers)
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
 });
 
 // Parse incoming requests with JSON payloads
