@@ -8,42 +8,45 @@ const __dirname = dirname(__filename);
 
 // Using import or export module
 import express from "express";
-import { MongoClient } from 'mongodb';
+import pkg from 'pg';
 import bodyParser from 'body-parser';
 import os from 'os';
 
 import { publicIp, publicIpv4, publicIpv6 } from 'public-ip';
 
-// // Using require
-// const express = require("express");
-// const { MongoClient } = require('mongodb');
-// const bodyParser = require("body-parser");
-// const os = require('os');
+const { Pool } = pkg;
 
-
-// For mongodb
+// For PostgreSQL
 // Connection details are read from environment variables so the same image
 // can run locally, in Docker Compose, or in production without code changes.
-const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017/';
-const dbName = process.env.DB_NAME || 'mydatabase';
-const client = new MongoClient(mongoUrl);
+const pool = new Pool({
+    host: process.env.PGHOST || 'localhost',
+    port: process.env.PGPORT || 5432,
+    user: process.env.PGUSER || 'postgres',
+    password: process.env.PGPASSWORD || 'postgres',
+    database: process.env.PGDATABASE || 'mydatabase',
+});
 
-const db = client.db(dbName); // Name of your database
-const collection = db.collection('mycollection'); // Name of your collection
-
-// Database connection function
+// Create the table if it doesn't already exist, then confirm the connection.
 // Retries a few times because in Docker Compose the app container can start
-// before the MongoDB container has finished initializing.
-async function connectToMongoDB(retries = 10, delayMs = 3000) {
+// before the PostgreSQL container has finished initializing.
+async function connectToPostgres(retries = 10, delayMs = 3000) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-            await client.connect();
-            console.log('Connected to MongoDB server');
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS mycollection (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+            console.log('Connected to PostgreSQL server');
             return;
         } catch (error) {
-            console.error(`Mongo connection attempt ${attempt}/${retries} failed:`, error.message);
+            console.error(`Postgres connection attempt ${attempt}/${retries} failed:`, error.message);
             if (attempt === retries) {
-                console.error('Could not connect to MongoDB, continuing without DB (endpoints using it will fail)');
+                console.error('Could not connect to PostgreSQL, continuing without DB (endpoints using it will fail)');
                 return;
             }
             await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -51,9 +54,7 @@ async function connectToMongoDB(retries = 10, delayMs = 3000) {
     }
 }
 
-connectToMongoDB();
-
-// await client.close(); // Close the connection
+connectToPostgres();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -72,24 +73,23 @@ app.get('/health', (req, res) => {
 app.use(express.json());
 app.use(express.static('/')); // Serve static files from root directory also we can use 'public' directory
 
-// Insert data to MongoDB server
+// Insert data into PostgreSQL server
 app.post('/insertData', async (req, res) => {
-    const data = req.body;
+    const { name, email } = req.body;
 
     try {
         // Check for duplicates
-        const existingData = await collection.findOne({ email: data.email });
+        const existing = await pool.query('SELECT id FROM mycollection WHERE email = $1', [email]);
 
-        if (existingData) {
+        if (existing.rows.length > 0) {
             return res.send(' email already exists, user adding fail!!');
             // return res.status(400).send(' email already exists');
         }
 
         // Insert the data
-        await collection.insertOne(data);
+        await pool.query('INSERT INTO mycollection (name, email) VALUES ($1, $2)', [name, email]);
         res.status(200).send(' added successfully');
         //   console.log('User added successfully....')
-
 
     } catch (error) {
         // console.error('Error inserting data:', error);
@@ -97,10 +97,10 @@ app.post('/insertData', async (req, res) => {
     }
 });
 
-// Get data from MongoDB server
+// Get data from PostgreSQL server
 app.get('/fetchData', async (req, res) => {
-    const data = await collection.find({}).limit(12).sort({ _id: -1 }).toArray()
-    res.json(data);
+    const result = await pool.query('SELECT * FROM mycollection ORDER BY id DESC LIMIT 12');
+    res.json(result.rows);
     // console.log('User fetch successfully....')
 });
 

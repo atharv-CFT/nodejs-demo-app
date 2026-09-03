@@ -6,34 +6,35 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${PORT:-5000}
-      MONGO_URL: ${MONGO_URL}
-      DB_NAME: ${MONGO_DB_NAME:-mydatabase}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-change_me_strong_password}
+      PGDATABASE: ${POSTGRES_DB:-mydatabase}
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
     networks:
       - app-network
-    # No host port published on purpose — Nginx is the only public entry point.
 
-  mongo:
-    image: mongo:7
-    container_name: nodejs-demo-mongo
+  postgres:
+    image: postgres:16-alpine
+    container_name: nodejs-demo-postgres
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-change_me_strong_password}
-      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-mydatabase}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_strong_password}
+      POSTGRES_DB: ${POSTGRES_DB:-mydatabase}
     volumes:
-      - mongo-data:/data/db
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mydatabase}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     networks:
       - app-network
-    # No host port published — only the app container talks to Mongo.
 
   nginx:
     image: nginx:1.27-alpine
@@ -53,4 +54,4 @@ networks:
     driver: bridge
 
 volumes:
-  mongo-data:
+  postgres-data:
