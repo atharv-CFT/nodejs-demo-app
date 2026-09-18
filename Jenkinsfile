@@ -2,6 +2,14 @@ pipeline {
     agent any
 
     stages {
+        stage('Notify Start') {
+            steps {
+                script {
+                    sendSlackAlert("🚀 Pipeline STARTED: Job '${env.JOB_NAME}' build #${env.BUILD_NUMBER}\n${env.BUILD_URL}")
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/atharv-CFT/nodejs-demo-app.git'
