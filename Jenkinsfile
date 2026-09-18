@@ -11,10 +11,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 sshagent(['ec2-nodejs-demo-deploy']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@172.31.66.4 \
-                        'cd ~/Slack-notification/nodejs-demo-app && git pull && docker compose up -d --build'
-                    """
+                    bat 'ssh -o StrictHostKeyChecking=no ubuntu@172.31.66.4 "cd ~/Slack-notification/nodejs-demo-app && git pull && docker compose up -d --build"'
                 }
             }
         }
