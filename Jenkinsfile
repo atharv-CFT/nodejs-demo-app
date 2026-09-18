@@ -8,6 +8,26 @@ pipeline {
             }
         }
 
+        stage('Pre Build') {
+            steps {
+                echo 'Running pre-build checks...'
+                bat 'npm install'
+                bat 'npm run lint'
+            }
+            post {
+                success {
+                    script {
+                        sendSlackAlert("🔧 Pre Build PASSED: Job '${env.JOB_NAME}' build #${env.BUILD_NUMBER}")
+                    }
+                }
+                failure {
+                    script {
+                        sendSlackAlert("❌ Pre Build FAILED: Job '${env.JOB_NAME}' build #${env.BUILD_NUMBER}\n${env.BUILD_URL}")
+                    }
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 sshagent(['ec2-nodejs-demo-deploy']) {
